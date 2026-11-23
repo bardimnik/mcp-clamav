@@ -186,3 +186,67 @@ class TestScanFlow:
         out = main.scan_file(GOOD_B64, "file.txt")
         assert out["success"] is False
         assert "secret" not in out["error"]
+
+
+class TestScanExitCodes:
+    def test_infected_result(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            main.subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(args=["clamscan"], returncode=1, stdout="FOUND", stderr=""),
+        )
+        monkeypatch.setattr(main.os.path, "exists", lambda p: True)
+        monkeypatch.setattr(main.os, "unlink", lambda p: None)
+        monkeypatch.setattr(main.tempfile, "NamedTemporaryFile", lambda *a, **kw: _fake_temp(tmp_path))
+
+        out = main.scan_file(GOOD_B64, "file.txt")
+        assert out["success"] is True
+        assert out["infected"] is True
+        assert "FOUND" in out["result"]
+
+    def test_clean_result(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            main.subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(args=["clamscan"], returncode=0, stdout="OK", stderr=""),
+        )
+        monkeypatch.setattr(main.os.path, "exists", lambda p: True)
+        monkeypatch.setattr(main.os, "unlink", lambda p: None)
+        monkeypatch.setattr(main.tempfile, "NamedTemporaryFile", lambda *a, **kw: _fake_temp(tmp_path))
+
+        out = main.scan_file(GOOD_B64, "file.txt")
+        assert out["success"] is True
+        assert out["infected"] is False
+
+    def test_error_exit_code_fails(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            main.subprocess,
+            "run",
+            lambda *a, **kw: subprocess.CompletedProcess(args=["clamscan"], returncode=2, stdout="", stderr="boom"),
+        )
+        monkeypatch.setattr(main.os.path, "exists", lambda p: True)
+        monkeypatch.setattr(main.os, "unlink", lambda p: None)
+        monkeypatch.setattr(main.tempfile, "NamedTemporaryFile", lambda *a, **kw: _fake_temp(tmp_path))
+
+        out = main.scan_file(GOOD_B64, "file.txt")
+        assert out["success"] is False
+        assert out["error"] == "scan failed"
+
+
+def _fake_temp(tmp_path):
+    class FakeTempFile:
+        def __init__(self):
+            self.path = str(tmp_path / "_fake")
+            self.name = self.path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def write(self, data):
+            with open(self.path, "wb") as f:
+                f.write(data)
+
+    return FakeTempFile()

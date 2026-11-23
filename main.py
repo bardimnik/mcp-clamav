@@ -36,7 +36,9 @@ def _env_int(name, default):
 MAX_B64_LEN = _env_int("MAX_B64_LEN", 28 * 1024 * 1024)  # ~20 MB decoded, in base64 chars
 SCAN_TIMEOUT = _env_int("SCAN_TIMEOUT", 120)  # seconds
 # Output cap in characters (not bytes); legacy MAX_OUTPUT_BYTES still honored.
-MAX_OUTPUT_CHARS = _env_int("MAX_OUTPUT_CHARS", _env_int("MAX_OUTPUT_BYTES", 4096))
+MAX_OUTPUT_CHARS = _env_int("MAX_OUTPUT_CHARS", 0)
+if MAX_OUTPUT_CHARS <= 0:
+    MAX_OUTPUT_CHARS = _env_int("MAX_OUTPUT_BYTES", 4096)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -70,7 +72,9 @@ def scan_file(base64_data: str, filename: str) -> dict:
         filename (str): Name of the file to use in the scan
 
     Returns:
-        dict: Scan results including truncated clamscan output
+        dict: {"success": bool, "result": str, "infected": bool} on success;
+              {"success": False, "error": str} on failure.
+              "infected" is True when clamscan reports a virus (exit code 1).
     """
     try:
         safe_name = _sanitize_filename(filename)
@@ -104,10 +108,19 @@ def scan_file(base64_data: str, filename: str) -> dict:
                 timeout=SCAN_TIMEOUT,
             )
             output = result.stdout + result.stderr
-            logger.info("Scan completed successfully")
+            if result.returncode == 0:
+                logger.info("Scan completed: clean")
+                infected = False
+            elif result.returncode == 1:
+                logger.info("Scan completed: infected")
+                infected = True
+            else:
+                logger.error("clamscan exited with code %d", result.returncode)
+                return {"success": False, "error": "scan failed"}
             return {
                 "success": True,
                 "result": _truncate(output, MAX_OUTPUT_CHARS),
+                "infected": infected,
             }
         except subprocess.TimeoutExpired:
             logger.error("clamscan timed out")

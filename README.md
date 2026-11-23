@@ -76,9 +76,10 @@ The MCP provides a single endpoint:
   - `base64_data`: Base64 encoded string of the file to scan
   - `filename`: Name of the file to use in the scan
 - Returns:
-  - `success`: Boolean indicating if the scan was successful
-  - `result`: Raw output from clamscan command
-  - `error`: Error message if the scan failed 
+  - `success`: Boolean indicating if the scan completed (clamscan ran)
+  - `result`: Raw output from clamscan command (truncated to MAX_OUTPUT_CHARS)
+  - `infected`: Boolean — True if clamscan reported a virus (exit code 1)
+  - `error`: Error message if the scan failed
 ## Updating
 
 ```bash
