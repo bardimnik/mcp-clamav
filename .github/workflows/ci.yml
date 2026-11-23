@@ -28,4 +28,14 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Run tests
-        run: uv run pytest tests/ -q
+        run: uv run pytest tests/ -q -m "not integration"
+
+      - name: Audit dependencies
+        run: |
+          uv export --format requirements-txt --no-hashes -o /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

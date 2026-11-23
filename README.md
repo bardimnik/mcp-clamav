@@ -79,3 +79,17 @@ The MCP provides a single endpoint:
   - `success`: Boolean indicating if the scan was successful
   - `result`: Raw output from clamscan command
   - `error`: Error message if the scan failed 
+## Updating
+
+```bash
+git pull
+uv sync --locked
+uv run python main.py
+```
+
+Run the test suite (unit tests only; integration tests require clamscan on PATH):
+
+```bash
+uv run pytest tests/ -q
+uv run pytest tests/test_integration.py -m integration -q   # only with clamscan installed
+```
