@@ -3,15 +3,12 @@ import os
 import stat
 import subprocess
 import sys
-import types
-from unittest import mock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import main
-
 
 GOOD_B64 = base64.b64encode(b"hello").decode()
 
@@ -106,9 +103,6 @@ class TestScanFlow:
         class FakeTempFile:
             def __init__(self, path):
                 self.path = path
-
-            def __init__(self, path):
-                self.path = path
                 self.name = path
 
             def __enter__(self):
@@ -158,6 +152,7 @@ class TestScanFlow:
     def test_timeout(self, monkeypatch):
         def raise_timeout(*a, **kw):
             raise subprocess.TimeoutExpired(cmd="clamscan", timeout=120)
+
         monkeypatch.setattr(main.subprocess, "run", raise_timeout)
         monkeypatch.setattr(main.os.path, "exists", lambda p: False)
         out = main.scan_file(GOOD_B64, "file.txt")
@@ -167,6 +162,7 @@ class TestScanFlow:
     def test_scanner_unavailable(self, monkeypatch):
         def raise_fnf(*a, **kw):
             raise FileNotFoundError("clamscan")
+
         monkeypatch.setattr(main.subprocess, "run", raise_fnf)
         monkeypatch.setattr(main.os.path, "exists", lambda p: False)
         out = main.scan_file(GOOD_B64, "file.txt")
@@ -184,6 +180,7 @@ class TestScanFlow:
     def test_error_does_not_leak_exception_details(self, monkeypatch):
         def raise_exc(*a, **kw):
             raise RuntimeError("internal secret details")
+
         monkeypatch.setattr(main.subprocess, "run", raise_exc)
         monkeypatch.setattr(main.os.path, "exists", lambda p: False)
         out = main.scan_file(GOOD_B64, "file.txt")

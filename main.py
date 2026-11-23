@@ -1,11 +1,12 @@
-from mcp.server.mcpserver import MCPServer
 import base64
 import binascii
-import tempfile
+import logging
 import os
 import re
 import subprocess
-import logging
+import tempfile
+
+from mcp.server.mcpserver import MCPServer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Create MCP server instance
 mcp = MCPServer("ClamAV Scanner")
+
 
 def _env_int(name, default):
     """Read a positive integer from the environment, falling back to default."""
@@ -87,7 +89,7 @@ def scan_file(base64_data: str, filename: str) -> dict:
         except (binascii.Error, ValueError):
             return {"success": False, "error": "invalid base64 input"}
 
-        with tempfile.NamedTemporaryFile(delete=False, mode='wb', suffix=f"_{safe_name}") as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, mode="wb", suffix=f"_{safe_name}") as temp_file:
             temp_file.write(file_content)
             temp_file_path = temp_file.name
         # Permissions remain 0600 (default); do NOT widen them.
@@ -96,7 +98,7 @@ def scan_file(base64_data: str, filename: str) -> dict:
 
         try:
             result = subprocess.run(
-                ['clamscan', temp_file_path],
+                ["clamscan", temp_file_path],
                 capture_output=True,
                 text=True,
                 timeout=SCAN_TIMEOUT,
