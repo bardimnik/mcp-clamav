@@ -14,10 +14,27 @@ logger = logging.getLogger(__name__)
 # Create MCP server instance
 mcp = MCPServer("ClamAV Scanner")
 
+def _env_int(name, default):
+    """Read a positive integer from the environment, falling back to default."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s value %r; using default %d", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("Non-positive %s value %d; using default %d", name, value, default)
+        return default
+    return value
+
+
 # Limits (overridable via env)
-MAX_B64_LEN = int(os.environ.get("MAX_B64_LEN", str(28 * 1024 * 1024)))  # ~20 MB decoded
-SCAN_TIMEOUT = int(os.environ.get("SCAN_TIMEOUT", "120"))  # seconds
-MAX_OUTPUT_BYTES = int(os.environ.get("MAX_OUTPUT_BYTES", "4096"))  # truncated output chars
+MAX_B64_LEN = _env_int("MAX_B64_LEN", 28 * 1024 * 1024)  # ~20 MB decoded, in base64 chars
+SCAN_TIMEOUT = _env_int("SCAN_TIMEOUT", 120)  # seconds
+# Output cap in characters (not bytes); legacy MAX_OUTPUT_BYTES still honored.
+MAX_OUTPUT_CHARS = _env_int("MAX_OUTPUT_CHARS", _env_int("MAX_OUTPUT_BYTES", 4096))
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -88,7 +105,7 @@ def scan_file(base64_data: str, filename: str) -> dict:
             logger.info("Scan completed successfully")
             return {
                 "success": True,
-                "result": _truncate(output, MAX_OUTPUT_BYTES),
+                "result": _truncate(output, MAX_OUTPUT_CHARS),
             }
         except subprocess.TimeoutExpired:
             logger.error("clamscan timed out")

@@ -16,6 +16,21 @@ import main
 GOOD_B64 = base64.b64encode(b"hello").decode()
 
 
+def test_env_int_falls_back_on_invalid_value(monkeypatch):
+    monkeypatch.setenv("MAX_B64_LEN", "not-a-number")
+    assert main._env_int("MAX_B64_LEN", 123) == 123
+
+
+def test_env_int_falls_back_on_non_positive_value(monkeypatch):
+    monkeypatch.setenv("SCAN_TIMEOUT", "0")
+    assert main._env_int("SCAN_TIMEOUT", 120) == 120
+
+
+def test_env_int_reads_valid_value(monkeypatch):
+    monkeypatch.setenv("SCAN_TIMEOUT", "30")
+    assert main._env_int("SCAN_TIMEOUT", 120) == 30
+
+
 def _ok_result(stdout="OK", stderr=""):
     return subprocess.CompletedProcess(args=["clamscan"], returncode=0, stdout=stdout, stderr=stderr)
 
@@ -132,7 +147,7 @@ class TestScanFlow:
         assert captured["mode"] == 0o600
 
     def test_output_truncated(self, monkeypatch):
-        monkeypatch.setattr(main, "MAX_OUTPUT_BYTES", 10)
+        monkeypatch.setattr(main, "MAX_OUTPUT_CHARS", 10)
         monkeypatch.setattr(main.subprocess, "run", lambda *a, **kw: _ok_result(stdout="x" * 100))
         monkeypatch.setattr(main.os.path, "exists", lambda p: False)
         out = main.scan_file(GOOD_B64, "file.txt")

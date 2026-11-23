@@ -49,7 +49,7 @@ The server listens for SSE connections on port 8000 by default.
 
 - `MAX_B64_LEN` (default `29360128`, ~20 MB decoded) — max accepted base64 input length in characters.
 - `SCAN_TIMEOUT` (default `120`) — max seconds for a single clamscan run before the scan is aborted.
-- `MAX_OUTPUT_BYTES` (default `4096`) — max characters of clamscan output returned to the client; longer output is truncated.
+- `MAX_OUTPUT_CHARS` (default `4096`) — max characters of clamscan output returned to the client; longer output is truncated. (`MAX_OUTPUT_BYTES` is still honored as a legacy fallback.)
 
 ## Cursor Configuration
 
@@ -59,13 +59,13 @@ To use this MCP with Cursor, add the following configuration to your Cursor sett
 {
   "mcpServers": {
     "ClamAV Server": {
-      "url": "http://127.0.0.1:8000/sse"  // or behind a reverse proxy; do NOT expose directly
+      "url": "http://127.0.0.1:8000/sse"
     }
   }
 }
 ```
 
-This configuration tells Cursor to connect to the ClamAV MCP server.
+This configuration tells Cursor to connect to the ClamAV MCP server. Do not expose the endpoint directly; put it behind a reverse proxy with authentication and TLS, or keep it on localhost.
 
 ## API
 
