@@ -24,14 +24,32 @@ sudo apt-get install clamav clamav-daemon
 brew install clamav
 ```
 
+## Security
+
+**This server has no authentication and no TLS. Do not expose it to an untrusted network.**
+Run it on localhost or behind a reverse proxy with authentication and TLS. Anyone who can reach the SSE endpoint can ask the server to scan arbitrary files with ClamAV and read the output.
+
 ## Usage
 
-To run the MCP server:
+Run the MCP server directly (SSE transport, listens on 127.0.0.1:8000 by default):
+
+```bash
+uv run python main.py
+```
+
+Or via the MCP CLI:
+
 ```bash
 uv run mcp run main.py -t sse
 ```
 
-The server will start and listen for SSE connections on port 8000 by default.
+The server listens for SSE connections on port 8000 by default.
+
+## Environment variables
+
+- `MAX_B64_LEN` (default `29360128`, ~20 MB decoded) — max accepted base64 input length in characters.
+- `SCAN_TIMEOUT` (default `120`) — max seconds for a single clamscan run before the scan is aborted.
+- `MAX_OUTPUT_BYTES` (default `4096`) — max characters of clamscan output returned to the client; longer output is truncated.
 
 ## Cursor Configuration
 
@@ -41,7 +59,7 @@ To use this MCP with Cursor, add the following configuration to your Cursor sett
 {
   "mcpServers": {
     "ClamAV Server": {
-      "url": "http://[SERVER_IP]:8000/sse"
+      "url": "http://127.0.0.1:8000/sse"  // or behind a reverse proxy; do NOT expose directly
     }
   }
 }

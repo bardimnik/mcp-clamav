@@ -1,7 +1,9 @@
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 import base64
+import binascii
 import tempfile
 import os
+import re
 import subprocess
 import logging
 
@@ -10,54 +12,102 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create MCP server instance
-mcp = FastMCP("ClamAV Scanner")
+mcp = MCPServer("ClamAV Scanner")
+
+# Limits (overridable via env)
+MAX_B64_LEN = int(os.environ.get("MAX_B64_LEN", str(28 * 1024 * 1024)))  # ~20 MB decoded
+SCAN_TIMEOUT = int(os.environ.get("SCAN_TIMEOUT", "120"))  # seconds
+MAX_OUTPUT_BYTES = int(os.environ.get("MAX_OUTPUT_BYTES", "4096"))  # truncated output chars
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Return a safe basename; raise ValueError if the name is unusable."""
+    if not isinstance(filename, str):
+        raise ValueError("filename must be a string")
+    name = os.path.basename(filename.replace("\\", "/")).strip()
+    if not name or name in (".", ".."):
+        raise ValueError("invalid filename")
+    # Reject path separators, control chars, newlines
+    if re.search(r"[/\\\x00-\x1f\x7f]", name):
+        raise ValueError("invalid filename")
+    if name.startswith("."):
+        raise ValueError("invalid filename")
+    return name[:255]
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n... [truncated, {len(text) - limit} chars omitted]"
+
 
 @mcp.tool()
 def scan_file(base64_data: str, filename: str) -> dict:
     """
     Scan a base64-encoded file using ClamAV.
-    
+
     Args:
         base64_data (str): Base64 encoded string representing a file
         filename (str): Name of the file to use in the scan
-        
+
     Returns:
-        dict: Scan results including the raw clamscan output
+        dict: Scan results including truncated clamscan output
     """
-    logger.info(f"Received scan request for file: {filename}")
+    try:
+        safe_name = _sanitize_filename(filename)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
+    logger.info(f"Received scan request for file: {safe_name}")
+
+    if not isinstance(base64_data, str) or len(base64_data) > MAX_B64_LEN:
+        return {"success": False, "error": "input too large or invalid"}
+
     temp_file_path = None
     try:
-        # Decode the base64 string
-        file_content = base64.b64decode(base64_data)
-        
-        # Create a temporary file to store the decoded content
-        with tempfile.NamedTemporaryFile(delete=False, mode='wb', suffix=f"_{filename}") as temp_file:
+        try:
+            file_content = base64.b64decode(base64_data, validate=True)
+        except (binascii.Error, ValueError):
+            return {"success": False, "error": "invalid base64 input"}
+
+        with tempfile.NamedTemporaryFile(delete=False, mode='wb', suffix=f"_{safe_name}") as temp_file:
             temp_file.write(file_content)
             temp_file_path = temp_file.name
-            
-        # Set permissions to allow ClamAV to read the file
-        os.chmod(temp_file_path, 0o644)
+        # Permissions remain 0600 (default); do NOT widen them.
+
         logger.info(f"Created temporary file: {temp_file_path}")
-            
-        # Run clamscan command
-        result = subprocess.run(['clamscan', temp_file_path], 
-                              capture_output=True, 
-                              text=True)
-        
-        logger.info("Scan completed successfully")
-        return {
-            "success": True,
-            "result": result.stdout + result.stderr
-        }
-        
+
+        try:
+            result = subprocess.run(
+                ['clamscan', temp_file_path],
+                capture_output=True,
+                text=True,
+                timeout=SCAN_TIMEOUT,
+            )
+            output = result.stdout + result.stderr
+            logger.info("Scan completed successfully")
+            return {
+                "success": True,
+                "result": _truncate(output, MAX_OUTPUT_BYTES),
+            }
+        except subprocess.TimeoutExpired:
+            logger.error("clamscan timed out")
+            return {"success": False, "error": "scan timed out"}
+        except FileNotFoundError:
+            logger.error("clamscan not found")
+            return {"success": False, "error": "scanner unavailable"}
+
     except Exception as e:
-        logger.error(f"Error during scan: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        logger.error(f"Error during scan: {e}")
+        return {"success": False, "error": "scan failed"}
     finally:
-        # Clean up the temporary file
         if temp_file_path and os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
-            logger.info(f"Cleaned up temporary file: {temp_file_path}")
+            try:
+                os.unlink(temp_file_path)
+                logger.info(f"Cleaned up temporary file: {temp_file_path}")
+            except Exception as cleanup_err:
+                logger.error(f"Failed to clean up temp file {temp_file_path}: {cleanup_err}")
+
+
+if __name__ == "__main__":
+    mcp.run(transport="sse")
